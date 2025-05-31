@@ -1,0 +1,45 @@
+
+
+model{
+
+  for (i in 1:n) { 
+
+    typeComb[i] ~ dcat(p[i, 1:ncells])
+
+    for (c in 1:ncells) {
+
+      mu[i, c] <- beta[c, 1] +
+      beta[c, 2] * education[i] +
+      beta[c, 3] * age[i] +
+      beta[c, 4] * female[i] +
+      beta[c, 5] * nonwhite[i] +
+      beta[c, 6] * income.proxy[i] +
+      beta[c, 7] * ideology[i] +
+      beta[c, 8] * natecon[i] +
+      beta[c, 9] * persfin[i] +
+      beta[c, 10] * victim[i] +
+      beta[c, 11] * corrupt[i] +
+      beta[c, 12] * capital[i] +
+      beta[c, 13] * bigcity[i] +
+      beta[c, 14] * y2012[i] +
+      beta[c, 15] * y2014[i]
+
+      emu[i, c] <- exp(mu[i, c])
+
+      p[i, c] <- emu[i, c] / sum(emu[i, 1:ncells])
+
+    }
+
+  }
+
+  for (k in 1:nvar) {
+    beta[1, k] <- 0 
+  }
+
+  for (c in 2:ncells) {
+    beta[c, 1:nvar] ~ dmnorm(b0, B0)
+  }
+
+}
+
+

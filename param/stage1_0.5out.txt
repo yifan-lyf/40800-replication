@@ -1,0 +1,43 @@
+ [1]  117  624  687 1808 1874 2113 2723 3181 3295 3349 3429 3446 3611 3739 4130
+[16] 4147 4152
+ [1]  117  624  687 1808 1874 2113 2723 3181 3295 3349 3429 3446 3611 3739 4130
+[16] 4147 4152
+---- Chain 1 started ----
+---- Chain 2 started ----
+---- Chain 3 started ----
+Compiling model graph
+   Resolving undeclared variables
+   Allocating nodes
+Graph information:
+   Observed stochastic nodes: 48774
+   Unobserved stochastic nodes: 8901
+   Total graph size: 376935
+
+Compiling model graph
+   Resolving undeclared variables
+   Allocating nodes
+Graph information:
+   Observed stochastic nodes: 48774
+   Unobserved stochastic nodes: 8901
+   Total graph size: 376935
+
+Compiling model graph
+   Resolving undeclared variables
+   Allocating nodes
+Graph information:
+   Observed stochastic nodes: 48774
+   Unobserved stochastic nodes: 8901
+   Total graph size: 376935
+
+Initializing model
+
+Initializing model
+
+Initializing model
+
+Chain 1: model compiled and adapted
+Chain 2: model compiled and adapted
+Chain 3: model compiled and adapted
+Chain 1: sampling complete
+Chain 3: sampling complete
+Chain 2: sampling complete
