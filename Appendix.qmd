@@ -1,0 +1,723 @@
+---
+title: "Replication Report for The Four Faces of Political Participation in Argentina: Using Latent Class Analysis to Study Political Behavior"
+format: html
+editor: visual
+---
+
+## Replication
+
+The model used MCMC and it's impossible to run it in Rmarkdown. I pushed the code and the original data to Uchicago's CPU cluster and ran it. Code and output data are as follows.
+
+Original Data: <https://github.com/yifan-lyf/40800-replication/blob/main/datamodel.RData>
+
+Stage1: <https://github.com/yifan-lyf/40800-replication/blob/main/stage1.R>
+
+sbatch file for stage1: <https://github.com/yifan-lyf/40800-replication/blob/main/stage1.sbatch>
+
+Stage2: <https://github.com/yifan-lyf/40800-replication/blob/main/stage2.R>
+
+sbatch file for stage2: <https://github.com/yifan-lyf/40800-replication/blob/main/stage2.sbatch>
+
+Data produced by stage1: <https://github.com/yifan-lyf/40800-replication/blob/main/samples_stage1.Rdata>
+
+Data produced by stage2: <https://github.com/yifan-lyf/40800-replication/blob/main/samples_stage2.Rdata>
+
+## Descriptive Analysis
+
+```{r, message=FALSE}
+library(rjags)
+library(coda)
+load.module("glm")
+
+library(foreach)
+library(doMC)  
+registerDoMC(4) 
+
+RNGkind("L'Ecuyer-CMRG") 
+set.seed(100)
+# Load recoded data
+
+load("datamodel.Rdata")
+
+attach(datamodel)
+
+set.seed(100)
+
+
+n <- dim(datamodel)[1]
+
+fixed.unconv <- rep(0, n)
+fixed.unconv[unconv.scale == 3 & conv.scale == 0] <- 2
+fixed.unconv[unconv.scale == 0 & conv.scale > 6] <- 1
+which(fixed.unconv != 0)
+
+fixed.conv <- rep(0, n)
+fixed.conv[unconv.scale == 3 & conv.scale == 0] <- 1
+fixed.conv[unconv.scale == 0 & conv.scale > 6] <- 2
+which(fixed.conv != 0)
+
+Y <- cbind(act.meet.mun, act.cont.mun, act.cont.aut, act.meet.imp, act.meet.pty, act.meet.aso, act.solve.prob, act.work.pty, act.protest, act.strike, act.block)
+
+ntypes <- 2
+
+nact <- dim(Y)[2]
+
+nconv <- nact - 3
+
+wprior <- c(1, 1)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+Y_df <- as.data.frame(Y)
+Y_df$year <- datamodel$year.cat
+
+Y_long <- melt(Y_df, id.vars = "year", variable.name = "Behavior", value.name = "Value")
+
+summary_df <- Y_long %>%
+  group_by(year, Behavior) %>%
+  summarise(ParticipationRate = mean(Value, na.rm = TRUE), .groups = "drop")
+
+summary_df$year <- factor(summary_df$year, labels = c("2010", "2012", "2014"))
+
+summary_df$Behavior <- factor(summary_df$Behavior, 
+                               levels = summary_df %>%
+                                 group_by(Behavior) %>%
+                                 summarise(avg = mean(ParticipationRate)) %>%
+                                 arrange(desc(avg)) %>%
+                                 pull(Behavior))
+
+ggplot(summary_df, aes(x = Behavior, y = ParticipationRate, fill = year)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Participation Rate by Year and Behavior",
+       x = "Behavior",
+       y = "Participation Rate",
+       fill = "Year") +
+  ylim(0, 0.3) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(patchwork)
+
+numeric_vars <- c("education", "age", "income", "ideology", "natecon", "persfin", "corrupt")
+categorical_vars <- c("female", "nonwhite", "victim", "capital", "bigcity", "year")
+
+df <- data.frame(
+  education = datamodel$education,
+  age = datamodel$age,
+  female = factor(datamodel$female, labels = c("Male", "Female")),
+  nonwhite = factor(datamodel$nonwhite, labels = c("White", "Nonwhite")),
+  income = datamodel$income.proxy,
+  ideology = datamodel$ideology,
+  natecon = datamodel$natecon,
+  persfin = datamodel$persfin,
+  victim = factor(datamodel$victim, labels = c("No", "Yes")),
+  corrupt = datamodel$corrupt,
+  capital = factor(datamodel$capital, labels = c("No", "Yes")),
+  bigcity = factor(datamodel$bigcity, labels = c("No", "Yes")),
+  year = factor(datamodel$year.cat, labels = c("2010", "2012", "2014"))
+)
+
+make_plot <- function(var) {
+  if (is.numeric(df[[var]])) {
+    ggplot(df, aes_string(x = var)) +
+      geom_histogram(aes(y = ..density..), fill = "skyblue", bins = 30) +
+      geom_density(color = "darkblue") +
+      theme_minimal() +
+      ggtitle(paste("Distribution of", var))
+  } else {
+    ggplot(df, aes_string(x = var)) +
+      geom_bar(fill = "coral") +
+      theme_minimal() +
+      ggtitle(paste("Count of", var))
+  }
+}
+
+all_vars <- c(numeric_vars, categorical_vars)
+all_plots <- lapply(all_vars, make_plot)
+
+pages <- split(all_plots, ceiling(seq_along(all_plots)/4))
+
+for (i in seq_along(pages)) {
+  print(wrap_plots(pages[[i]], ncol = 2))
+}
+```
+
+## Extension
+
+Original Data: <https://github.com/yifan-lyf/40800-replication/blob/main/datamodel.RData>
+
+Stage1:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage1_0.1.R>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage1_0.5.R>
+
+sbatch file for stage1:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage1_0.1.sbatch>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage1_0.5.sbatch>
+
+Stage2:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage2_0.1.R>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage2_0.5.R>
+
+sbatch file for stage2:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage2_0.1.sbatch>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/stage2_0.5.sbatch>
+
+Data produced by stage1:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/samples_stage1_0.1.Rdata>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/samples_stage1_0.5.Rdata>
+
+Data produced by stage2:
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/samples_stage2_0.1.Rdata>
+
+<https://github.com/yifan-lyf/40800-replication/blob/main/param/samples_stage2_0.5.Rdata>
+
+## Visualization
+
+```{r, warning=FALSE, message=FALSE}
+# Goal: Make Table 1 and Figures 1-2
+# Dependencies: "samples_stage1.Rdata"
+
+library(xtable)
+library(scales)
+library(gplots)
+
+load("samples_stage1.Rdata") 
+
+options(digits = 3)
+options(scipen = 999)
+
+# We first look at the results of the latent class model, usted to classify respondents into four participatory types:
+  
+# (1) Low conventional, low unconventional (Outsider)
+# (2) Low conventional, high unconventional (Agitator)
+# (3) High conventional, low unconventional (Conventional)
+# (4) High conventional, high unconventional (Activist)
+
+## Influence of participatory types on involvement in political activities
+
+# Our expectation is that $\alpha_{C, j}$ should be higher for conventional activities, and that $\alpha_{U, j}$ should be higher for unconventional activites.
+
+# To ensure identification of model parameters, we set $\alpha_{C, j}$ to zero for the activity a-priori considered to be the most unconventional one (blocking roads), and $\alpha_{U, j}$ to zero for the activity a-priori considered to be the most conventional one (attending meetings of municipal bodies). For the remaining activities, these parameters are allowed to vary freely.
+
+# The following table give average values and 95% posterior intervals for all $\alpha_{C, j}$'s and $\alpha_{U, j}$'s:
+
+act.names <- c("Municipal meetings", "Contact municipality", "Contact authorities", "Improvement meeting", "Party meeting", "Association meeting", "Solve problem", "Work for party", "Protest", "Strike", "Block")
+
+alpha.samples <- rbind(samples.stage1[[1]][ , substr(colnames(samples.stage1[[1]]), 1, 6) == "alpha["], samples.stage1[[2]][ , substr(colnames(samples.stage1[[2]]), 1, 6) == "alpha["], samples.stage1[[3]][ , substr(colnames(samples.stage1[[3]]), 1, 6) == "alpha["])
+
+alpha.conv.samples <- rbind(samples.stage1[[1]][ , substr(colnames(samples.stage1[[1]]), 1, 7) == "alpha.c"], samples.stage1[[2]][ , substr(colnames(samples.stage1[[2]]), 1, 7) == "alpha.c"], samples.stage1[[3]][ , substr(colnames(samples.stage1[[3]]), 1, 7) == "alpha.c"])
+
+alpha.unconv.samples <- rbind(samples.stage1[[1]][ , substr(colnames(samples.stage1[[1]]), 1, 7) == "alpha.u"], samples.stage1[[2]][ , substr(colnames(samples.stage1[[2]]), 1, 7) == "alpha.u"], samples.stage1[[3]][ , substr(colnames(samples.stage1[[3]]), 1, 7) == "alpha.u"])
+
+T.ac.i <- apply(alpha.conv.samples, 2, mean)
+T.ac.ii <- apply(alpha.conv.samples, 2, quantile, p = c(0.025, 0.975))
+T.ac <- t(rbind(T.ac.i, T.ac.ii))
+colnames(T.ac) <- c("mean", "2.5%", "97.5%")
+rownames(T.ac) <- act.names
+
+T.au.i <- apply(alpha.unconv.samples, 2, mean)
+T.au.ii <- apply(alpha.unconv.samples, 2, quantile, p = c(0.025, 0.975))
+T.au <- t(rbind(T.au.i, T.au.ii))
+colnames(T.au) <- c("mean", "2.5%", "97.5%")
+rownames(T.au) <- act.names
+```
+
+```{r, warning=FALSE, message=FALSE}
+Table1 <- cbind(T.ac, T.au)
+
+xtable(Table1)
+
+# As expected, $\alpha_{C, j}$'s are higher for conventional activities than unconventional activites, and $\alpha_{U, j}$'s are higher for unconventional activities than conventional activites.
+
+### Type Effects
+
+# For each combination of conventional and unconventional types, we can compute predicted probabilities of participation in each activity.
+
+inv.logit <- function(x) {
+  y <- 1 / (1 + exp(-x))
+  return(y)
+}
+
+n.iters <- dim(samples.stage1[[1]])[1] * 3
+n.act <- dim(alpha.samples)[2]
+n.ctypes <- 4
+pred.P <- array(NA, c(n.iters, n.act, n.ctypes))
+pred.change.P <- array(NA, c(n.iters, n.act, (n.ctypes - 1)))
+
+pred.P[,,1] <- inv.logit(alpha.samples)
+pred.P[,,2] <- inv.logit(alpha.samples + alpha.unconv.samples)
+pred.P[,,3] <- inv.logit(alpha.samples + alpha.conv.samples)
+pred.P[,,4] <- inv.logit(alpha.samples + alpha.conv.samples + alpha.unconv.samples)
+
+pred.change.P[ , , 1] <- pred.P[ , , 2] - pred.P[ , , 1]
+pred.change.P[ , , 2] <- pred.P[ , , 3] - pred.P[ , , 1]
+pred.change.P[ , , 3] <- pred.P[ , , 4] - pred.P[ , , 1]
+
+mean.prob <- apply(pred.P, c(2,3), mean)  * 100
+rownames(mean.prob) <- act.names
+quantile.prob.low <- apply(pred.P, c(2, 3), quantile, p = c(0.025))  * 100
+quantile.prob.high <- apply(pred.P, c(2, 3), quantile, p = c(0.975))  * 100
+
+mean.chprob <- apply(pred.change.P, c(2, 3), mean)  * 100
+rownames(mean.chprob) <- act.names
+quantile.chprob.low <- apply(pred.change.P, c(2, 3), quantile, p = c(0.025))  * 100
+quantile.chprob.high <- apply(pred.change.P, c(2, 3), quantile, p = c(0.975))  * 100
+
+T.probs <- cbind(mean.prob[, 1], quantile.prob.low[, 1], quantile.prob.high[, 1], mean.chprob[, 1], quantile.chprob.low[, 1], quantile.chprob.high[, 1], mean.chprob[, 2], quantile.chprob.low[, 2], quantile.chprob.high[, 2], mean.chprob[, 3], quantile.chprob.low[, 3], quantile.chprob.high[, 3])
+colnames(T.probs) <- c("P(Y|T_LL)", "2.5%", "97.5%", "P(Y|T_LH) - P(Y|T_LL)", "2.5%", "97.5%", "P(Y|T_HL) - P(Y|T_LL)", "2.5%", "97.5%", "P(Y|T_HH) - P(Y|T_LL)", "2.5%", "97.5%")
+rownames(T.probs) <- act.names
+
+conv.order <- order(T.ac.i , decreasing = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- FIGURE 2 --------##
+
+# The following bar plot gives participation probabilities for the four combined types:
+
+#jpeg("Figure2.png", width = 750, height = 500)
+barplot2(height = mean.prob[conv.order,], beside = TRUE, ci.l = quantile.prob.low[conv.order,], ci.u = quantile.prob.high[conv.order,],col=rev(gray.colors(11)),ylim=c(0,100), plot.ci = TRUE, ci.color = "black", names.arg = c("Outsider", "Agitator", "Conventional", "Activist"), ylab = "Participation Probability")
+axis(2)
+legend(0, 101, rownames(mean.prob[conv.order, ]), cex = 0.8, bty = "n", fill = rev(gray.colors(11)))
+mtext("Participation by Type",at = 24, line = 1, cex = 1)
+#dev.off()
+
+# For each combined type, activities are sorted based on the extent to which they are affected by the conventional type (from higher $\alpha_{C, j}$ to lower $\alpha_{C, j}$). Political activities such as participation in protests, strikes, and road cloks tend to have low $\alpha_{C, j}$ and are therefore located toward the right of the spectrum.
+
+## Type assignments
+
+conv.type.samples <- rbind(samples.stage1[[1]][ , substr(colnames(samples.stage1[[1]]), 1, 5) == "conv."], samples.stage1[[2]][ , substr(colnames(samples.stage1[[2]]), 1, 5) == "conv."], samples.stage1[[3]][ , substr(colnames(samples.stage1[[3]]), 1, 5) == "conv."])
+
+unconv.type.samples <- rbind(samples.stage1[[1]][ , substr(colnames(samples.stage1[[1]]), 1, 5) == "uncon"], samples.stage1[[2]][ , substr(colnames(samples.stage1[[2]]), 1, 5) == "uncon"], samples.stage1[[3]][ , substr(colnames(samples.stage1[[3]]), 1, 5) == "uncon"])
+
+# Participatory types are not fixed for each individual; they are determined probabilistically.
+
+prob.conv.type <- apply(conv.type.samples - 1, 2, mean) 
+prob.unconv.type <- apply(unconv.type.samples - 1, 2, mean)
+
+per.outsiders <- paste(round(mean(ifelse(prob.conv.type < 0.5 & prob.unconv.type < 0.5, 1, 0)) * 100, 1), "%", sep = "")
+per.engaged <- paste(round(mean(ifelse(prob.conv.type >= 0.5 & prob.unconv.type < 0.5, 1, 0)) * 100, 1), "%", sep = "")
+per.agitators <- paste(round(mean(ifelse(prob.conv.type < 0.5 & prob.unconv.type >= 0.5, 1, 0)) * 100, 1), "%", sep = "")
+per.factotums <- paste(round(mean(ifelse(prob.conv.type >= 0.5 & prob.unconv.type >= 0.5, 1, 0)) * 100, 1), "%", sep = "")
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- FIGURE 1 --------##
+
+# The following scatterplot gives the relationship between the probability of being assigned a high conventional type, and the probability of being assigned a high unconventional type. Each point in the plot corresponds to a survey respondent.
+
+#jpeg("Figure1.png", width = 600, height = 600)
+plot(prob.conv.type, prob.unconv.type, xlab = "Probability of high conventional type",ylab = "Probability of high unconventional type", col = alpha("black", 0.3))
+abline(h = 0.5, lty = 2)
+abline(v = 0.5, lty = 2)
+text(0.25, 0.25, paste("OUTSIDERS\n", "(",per.outsiders,")", sep = ""), col = "grey40")
+text(0.75, 0.25, paste("CONVENTIONALS\n", "(",per.engaged,")", sep = ""), col = "grey40")
+text(0.25, 0.75, paste("AGITATORS\n", "(",per.agitators,")", sep = ""), col = "grey40")
+text(0.75, 0.75, paste("ACTIVISTS\n", "(",per.factotums,")", sep = ""), col = "grey40")
+#dev.off()
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Goal: Make Figure 3
+# Dependencies: "samples_stage2.Rdata"
+
+library(coda)
+library(plotrix)
+
+load("samples_stage2.Rdata")
+
+samples.stage2 <- as.mcmc.list(samples.stage2)
+
+coef.samples <- samples.stage2[, substr(names(samples.stage2[[1]][1,]), 1, 6) != "beta[1"]
+
+coef.samples.all30 <- NULL
+for (j in 1:30) {
+  coef.samples.all30 <- rbind(coef.samples.all30, coef.samples[[j]])
+}
+
+N.iters <- dim(coef.samples.all30)[1]
+
+beta.samples.type2 <- coef.samples.all30[, substr(colnames(coef.samples.all30), 1, 6) == "beta[2"]
+beta.samples.type3 <- coef.samples.all30[, substr(colnames(coef.samples.all30), 1, 6) == "beta[3"]
+beta.samples.type4 <- coef.samples.all30[, substr(colnames(coef.samples.all30), 1, 6) == "beta[4"]
+
+beta.means.type2 <- apply(beta.samples.type2, 2, mean)
+beta.means.type3 <- apply(beta.samples.type3, 2, mean)
+beta.means.type4 <- apply(beta.samples.type4, 2, mean)
+
+beta.ql.type2 <- apply(beta.samples.type2, 2, quantile, p = 0.025)
+beta.ql.type3 <- apply(beta.samples.type3, 2, quantile, p = 0.025)
+beta.ql.type4 <- apply(beta.samples.type4, 2, quantile, p = 0.025)
+
+beta.qu.type2 <- apply(beta.samples.type2, 2, quantile, p = 0.975)
+beta.qu.type3 <- apply(beta.samples.type3, 2, quantile, p = 0.975)
+beta.qu.type4 <- apply(beta.samples.type4, 2, quantile, p = 0.975)
+
+##-------- FIGURE 3 --------##
+
+varnames <- c("Education", "Age", "Female", "Non-white", "Income proxy", "Ideology (left-right scale)", "National economy", "Personal economy", "Crime victim", "Perception of corruption", "National capital", "Big city", "Year 2012", "Year 2014")
+
+#jpeg("Figure3.png", width = 850, height = 500)
+
+par(mfrow = c(1, 3)) 
+par(oma = c(5, 11, 0, 0), mar = c(0, 0, 4, 4)) 
+
+# (L, H) vs. (L, L)
+
+plotCI(y = 1:14 - 0.1, x = rev(beta.means.type2[2:15]), err = "x", ui = rev(beta.qu.type2[2:15]), li = rev(beta.ql.type2[2:15]), axes = FALSE, ann = FALSE, ylim = c(0.7, 14.1), xlim = c(-1.2, 1.2), pch = 16, pt.bg = par(cex = 0.75), sfrac = 0.005, lwd = 1, col = "black")
+axis(side = 1 , cex.axis = 1)
+axis(side = 2 , las = 1, at = c(1:14), cex.axis = 1,labels = rev(varnames), las = 2)
+mtext("Agitator vs. Outsider", at = 0, line = 1, cex = 0.9)
+abline(v = 0, col = "grey63")
+
+# (H, L) vs. (L, L)
+
+plotCI(y = 1:14 - 0.1, x = rev(beta.means.type3[2:15]), err = "x", ui = rev(beta.qu.type3[2:15]), li = rev(beta.ql.type3[2:15]), axes = FALSE, ann = FALSE, ylim = c(0.7, 14.1), xlim = c(-1.2, 1.2), pch = 16, pt.bg = par(cex = 0.75), sfrac = 0.005, lwd = 1, col = "black")
+axis(side = 1, cex.axis = 1)
+mtext("Conventional vs. Outsider",at = 0, line = 1, cex = 0.9)
+abline(v=0,col="grey63")
+
+# (H, H) vs. (L, L)
+
+plotCI(y = 1:14 - 0.1, x = rev(beta.means.type4[2:15]), err = "x", ui = rev(beta.qu.type4[2:15]), li = rev(beta.ql.type4[2:15]), axes = FALSE, ann = FALSE, ylim = c(0.7, 14.1), xlim = c(-1.2, 1.2), pch = 16, pt.bg = par(cex = 0.75), sfrac = 0.005, lwd = 1, col = "black")
+axis(side = 1, cex.axis = 1)
+mtext("Activist vs. Outsider", at = 0, line = 1, cex = 0.9)
+abline(v = 0, col = "grey63")
+
+#dev.off()
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Goal: Make Figures 4-6 and Table C1
+# Dependencies: "datamodel.Rdata", "samples_stage2.Rdata"
+
+library(coda)
+library(plotrix)
+library(xtable)
+
+# Load recoded data
+
+load("datamodel.Rdata")
+
+datamodel2 <- data.frame("education" = datamodel$education, "age" = datamodel$age, "female" = datamodel$female, "nonwhite" = datamodel$nonwhite, "income.proxy" = datamodel$income.proxy, "ideology" = datamodel$ideology, "natecon" = datamodel$natecon, "persfin" = datamodel$persfin, "victim" = datamodel$victim, "corrupt" = datamodel$corrupt, "capital" = datamodel$capital, "bigcity" = datamodel$bigcity, "y2012" = ifelse(datamodel$year.cat == 2, 1, 0), "y2014" = ifelse(datamodel$year.cat == 3, 1, 0))
+
+# Standardize covariates
+datamodel2 <- as.data.frame(scale(datamodel2))
+
+# Load 2nd stage chains
+load("samples_stage2.Rdata")
+
+samples.stage2 <- as.mcmc.list(samples.stage2)
+
+coef.samples <- samples.stage2[ , substr(names(samples.stage2[[1]][1, ]), 1, 6) != "beta[1"]
+
+coef.samples.all <- NULL
+for (j in 1:30) {
+  coef.samples.all <- rbind(coef.samples.all, coef.samples[[j]])
+}
+
+N.iters <- dim(coef.samples.all)[1]
+
+n.sims <- 15
+
+X.median <- c(1, apply(datamodel2, 2, median))
+names(X.median)[1] <- "constant"
+X.median["female"] <- quantile(datamodel2$female)[2]
+X.median["natecon"] <- quantile(datamodel2$natecon)[5]
+X.median["persfin"] <- quantile(datamodel2$persfin)[5]
+X.median["corrupt"] <- quantile(datamodel2$corrupt, p = c(0.05))
+
+X.sims <- matrix(rep(X.median), nrow = n.sims, ncol = length(X.median), byrow = T)
+colnames(X.sims) <- names(X.median)
+
+X.sims[2, "education"] <- quantile(datamodel2$education)[4]
+X.sims[3, "age"] <- quantile(datamodel2$age)[4]
+X.sims[4, "female"] <- quantile(datamodel2$female)[4]
+X.sims[5, "nonwhite"] <- quantile(datamodel2$nonwhite)[4]
+X.sims[6, "income.proxy"] <- quantile(datamodel2$income.proxy)[4]
+X.sims[7, "ideology"] <- quantile(datamodel2$ideology)[4]
+X.sims[8, "natecon"] <- quantile(datamodel2$natecon)[2]
+X.sims[9, "persfin"] <- quantile(datamodel2$persfin)[2]
+X.sims[10, "victim"] <- quantile(datamodel2$victim)[5] 
+X.sims[11, "corrupt"] <- quantile(datamodel2$corrupt)[4]
+X.sims[12, "capital"] <- quantile(datamodel2$capital)[5]
+X.sims[13, "bigcity"] <- quantile(datamodel2$bigcity)[5]
+X.sims[14, "y2012"] <- quantile(datamodel2$y2012)[5]
+X.sims[15, "y2014"] <- quantile(datamodel2$y2014)[5]
+
+betas.list <- list()
+eXB.list <- list()
+P.list <- list()
+
+for (j in 2:4) {
+
+  betas.list[[j]] <- coef.samples.all[ , substr(colnames(coef.samples.all), 1, 6) == paste("beta[", j, sep="")]
+
+  eXB.list[[j]] <- exp(betas.list[[j]] %*% t(X.sims))
+
+}
+
+P.list[[2]] <- eXB.list[[2]] / (matrix(1, nrow = N.iters, ncol = 15) + eXB.list[[2]] + eXB.list[[3]] + eXB.list[[4]])
+P.list[[3]] <- eXB.list[[3]] / (matrix(1, nrow = N.iters, ncol = 15) + eXB.list[[2]] + eXB.list[[3]] + eXB.list[[4]])
+P.list[[4]] <- eXB.list[[4]] / (matrix(1, nrow = N.iters, ncol = 15) + eXB.list[[2]] + eXB.list[[3]] + eXB.list[[4]])
+P.list[[1]] <- matrix(1, nrow = N.iters, ncol = 15) - P.list[[2]] - P.list[[3]] - P.list[[4]]
+
+Base.mean.list <- list()
+Base.ql.list <- list()
+Base.qu.list <- list()
+dP.list <- list()
+dP.mean.list <- list()
+dP.ql.list <- list()
+dP.qu.list <- list()
+
+for (j in 1:4) {
+
+  Base.mean.list[[j]] <- apply(P.list[[j]], 2, mean)
+
+  Base.ql.list[[j]] <- apply(P.list[[j]], 2, quantile, p = 0.025)
+
+  Base.qu.list[[j]] <- apply(P.list[[j]], 2, quantile, p = 0.975)
+
+  dP.list[[j]] <- matrix(NA, nrow = N.iters, ncol = 14)
+
+  for (k in 1:14) {
+    dP.list[[j]][ , k] <- P.list[[j]][ , k + 1] - P.list[[j]][ , 1]
+  }
+
+  dP.mean.list[[j]] <- apply(dP.list[[j]], 2, mean)
+  dP.ql.list[[j]] <- apply(dP.list[[j]], 2, quantile, p = 0.025)
+  dP.qu.list[[j]] <- apply(dP.list[[j]], 2, quantile, p = 0.975)
+
+  names(dP.mean.list[[j]]) <- names(X.median)[-1]
+  names(dP.ql.list[[j]]) <- names(X.median)[-1]
+  names(dP.qu.list[[j]]) <- names(X.median)[-1]
+
+}
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- TABLE C1 --------##
+
+METABLE <- cbind(
+  dP.mean.list[[1]], dP.ql.list[[1]], dP.qu.list[[1]],
+  dP.mean.list[[2]], dP.ql.list[[2]], dP.qu.list[[2]],
+  dP.mean.list[[3]], dP.ql.list[[3]], dP.qu.list[[3]],
+  dP.mean.list[[4]], dP.ql.list[[4]], dP.qu.list[[4]])
+
+TableC1 <- rbind(c(Base.mean.list[[1]][1], Base.ql.list[[1]][1], Base.qu.list[[1]][1], Base.mean.list[[2]][1], Base.ql.list[[2]][1], Base.qu.list[[2]][1], Base.mean.list[[3]][1], Base.ql.list[[3]][1], Base.qu.list[[3]][1], Base.mean.list[[4]][1], Base.ql.list[[4]][1], Base.qu.list[[4]][1]), METABLE) * 100
+
+colnames(TableC1) <- c("P(Outsider)", "2.5%", "97.5%", "P(Agitator)", "2.5%", "97.5%", "P(Conventional)", "2.5%", "97.5%", "P(Activist)", "2.5%", "97.5%")
+
+# for latex
+xtable(TableC1, digits  =1)
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- FIGURE 4 --------##
+
+# Effect economic evaluations
+
+#jpeg("Figure4.png", width = 800, height = 400)
+
+par(mfrow=c(1, 2)) 
+par(oma=c(4, 1, 4, 2),mar=c(0, 4, 0, 0)) 
+
+plotCI(x = 1:4, y = TableC1["natecon", c(1, 4, 7, 10)], li = TableC1["natecon", c(2, 5, 8, 11)], ui = TableC1["natecon", c(3, 6, 9, 12)], xlim = c(0.5, 4.5), ylim = c(-15, 15), pch = 16, axes = FALSE, ann = FALSE)
+axis(2, cex.axis = 1)
+axis(1, at = 1:4, labels = c("Outsider", "Agitator", "Conventional", "Activist"), cex.axis = 1)
+mtext("Concerns about National Economy",at = 2.5, line = 1, cex = 1.2)
+abline(h = 0, col = "black")
+
+plotCI(x = 1:4, y = TableC1["persfin", c(1, 4, 7, 10)], li = TableC1["persfin", c(2, 5, 8, 11)], ui = TableC1["persfin", c(3, 6, 9, 12)], xlim = c(0.5, 4.5), ylim = c(-15, 15), pch = 16, axes = FALSE, ann = FALSE)
+axis(2, cex.axis = 1)
+axis(1, at = 1:4, labels = c("Outsider", "Agitator", "Conventional", "Activist"), cex.axis = 1)
+mtext("Concerns about Personal Economy",at = 2.5, line = 1, cex = 1.2)
+abline(h = 0, col = "black")
+
+mtext("Economic Evaluations", at = 0.46 , side = 3, line = -40, cex = 1, font = 2, outer = TRUE)
+
+#dev.off()
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- FIGURE 5 --------##
+
+# Effect perceptions of corruption
+
+#jpeg("Figure5.png", width = 500, height = 400)
+
+par(mfrow=c(1, 1)) 
+par(oma=c(4, 1, 4, 2),mar=c(0, 4, 0, 0)) 
+
+plotCI(x = 1:4, y = TableC1["corrupt", c(1, 4, 7, 10)], li = TableC1["corrupt", c(2, 5, 8, 11)], ui = TableC1["corrupt", c(3, 6, 9, 12)], xlim = c(0.5, 4.5), ylim = c(-15, 15), pch = 16, axes = FALSE, ann = FALSE)
+axis(2, cex.axis = 1)
+axis(1, at = 1:4, labels = c("Outsider", "Agitator", "Conventional", "Activist"), cex.axis = 1)
+mtext("Perceptions of Corruption", at = 2.5, line = 1, cex = 1.2)
+abline(h = 0, col = "black")
+
+#dev.off()
+```
+
+```{r, warning=FALSE, message=FALSE}
+##-------- FIGURE 6 --------##
+
+# Effect crime victimization
+
+#jpeg("Figure6.png", width = 500, height = 400)
+
+par(mfrow=c(1, 1)) 
+par(oma=c(4, 1, 4, 2),mar=c(0, 4, 0, 0)) 
+
+plotCI(x = 1:4, y = TableC1["victim", c(1, 4, 7, 10)], li = TableC1["victim", c(2, 5, 8, 11)], ui = TableC1["victim", c(3, 6, 9, 12)], xlim = c(0.5, 4.5), ylim=c(-15, 15), pch = 16, axes = FALSE, ann = FALSE)
+axis(2, cex.axis = 1)
+axis(1, at = 1:4, labels = c("Outsider", "Agitator", "Conventional", "Activist"), cex.axis = 1)
+mtext("Crime Victimization", at = 2.5, line = 1, cex = 1.2)
+abline(h = 0, col = "black")
+
+#dev.off()
+
+```
+
+## Comparison
+
+```{r, warning=FALSE}
+# DIC
+# model.jags saved to save time
+
+#library(rjags)
+#library(coda)
+#load.module("glm")
+
+#library(foreach)
+#library(doMC)  
+#registerDoMC(4) 
+
+#RNGkind("L'Ecuyer-CMRG") 
+#set.seed(100)
+# Load recoded data
+
+#load("datamodel.Rdata")
+
+#attach(datamodel)
+#n <- dim(datamodel)[1]
+#fixed.unconv <- rep(0, n)
+#fixed.unconv[unconv.scale == 3 & conv.scale == 0] <- 2
+#fixed.unconv[unconv.scale == 0 & conv.scale > 6] <- 1
+#which(fixed.unconv != 0)
+
+#fixed.conv <- rep(0, n)
+#fixed.conv[unconv.scale == 3 & conv.scale == 0] <- 1
+#fixed.conv[unconv.scale == 0 & conv.scale > 6] <- 2
+#which(fixed.conv != 0)
+
+#Y <- cbind(act.meet.mun, act.cont.mun, act.cont.aut, act.meet.imp, act.meet.pty, act.meet.aso, act.solve.prob, act.work.pty, act.protest, act.strike, act.block)
+#ntypes <- 2
+#nact <- dim(Y)[2]
+#nconv <- nact - 3
+#wprior <- c(1, 1)
+
+#data.jags  <- list("n" = n, "wprior" = wprior, "ntypes" = ntypes, "nact" = nact, "Y"=  as.matrix(Y), "fixed.conv" = fixed.conv, "fixed.unconv" = fixed.unconv)
+
+#inits.jags <- list(
+#  list(.RNG.seed = sample(1:10000, 1), .RNG.name = "base::Mersenne-Twister"),
+#  list(.RNG.seed = sample(1:10000, 1), .RNG.name = "base::Mersenne-Twister")
+#)
+#model.jags <- jags.model("stage1.bug", data = data.jags, inits = inits.jags, n.chains = 2, n.adapt = 1000)
+#save(model.jags, file = "model_jags.Rdata")
+
+#dic_result <- dic.samples(model.jags, n.iter = 1000, type = "pD")
+#dic_value <- sum(dic_result$deviance + dic_result$penalty)
+#print(dic_value)
+
+#load("model_jags_0.1.Rdata")
+#dic_result_0.1 <- dic.samples(model.jags_0.1, n.iter = 1000, type = "pD")
+#dic_value_0.1 <- sum(dic_result_0.1$deviance + dic_result_0.1$penalty)
+#print(dic_value_0.1)
+```
+
+```{r, warning=FALSE}
+# visualization for comparison
+library(coda)
+library(ggplot2)
+library(dplyr)
+
+files <- c("samples_stage1.Rdata", "samples_stage1_0.1.Rdata", "samples_stage1_0.5.Rdata")
+labels <- c("Baseline", "Threshold 0.1", "Threshold 0.5")
+
+results <- data.frame()
+plot_data <- data.frame()
+
+for (i in seq_along(files)) {
+  
+  load(files[i])
+  combined.samples <- as.mcmc(do.call(rbind, samples.stage1))
+  n <- length(grep("^conv\\.type\\[", colnames(combined.samples)))
+  
+  conv.probs <- numeric(n)
+  unconv.probs <- numeric(n)
+  
+  for (j in 1:n) {
+    conv.col <- paste0("conv.type[", j, "]")
+    unconv.col <- paste0("unconv.type[", j, "]")
+    
+    conv.probs[j] <- mean(combined.samples[, conv.col] == 2)
+    unconv.probs[j] <- mean(combined.samples[, unconv.col] == 2)
+  }
+  
+  p.conv.uncertain <- mean(conv.probs > 0.45 & conv.probs < 0.55)
+  p.unconv.uncertain <- mean(unconv.probs > 0.45 & unconv.probs < 0.55)
+  
+  results <- rbind(results, data.frame(
+    Setting = labels[i],
+    Uncertain_Conv = round(p.conv.uncertain, 3),
+    Uncertain_Unconv = round(p.unconv.uncertain, 3)
+  ))
+  
+  df_tmp <- data.frame(
+    conv_prob = conv.probs,
+    unconv_prob = unconv.probs,
+    Setting = labels[i]
+  )
+  df_tmp <- df_tmp %>% 
+    filter(conv_prob > 0 | unconv_prob > 0)
+  
+  plot_data <- rbind(plot_data, df_tmp)
+}
+
+print(results)
+
+ggplot(plot_data %>% filter(conv_prob >= 0.01 & conv_prob <= 0.99), aes(x = conv_prob)) +
+  geom_histogram(binwidth = 0.02, fill = "steelblue", color = "white") +
+  facet_wrap(~Setting) +
+  labs(title = "Conv.type = 2 Posterior Probability between 0.1 and 0.9",
+       x = "Posterior Probability", y = "Count") +
+  theme_minimal()
+
+ggplot(plot_data %>% filter(unconv_prob >= 0.01 & unconv_prob <= 0.99), aes(x = unconv_prob)) +
+  geom_histogram(binwidth = 0.02, fill = "darkorange", color = "white") +
+  facet_wrap(~Setting) +
+  labs(title = "Unconv.type = 2 Posterior Probability between 0.1 and 0.9",
+       x = "Posterior Probability", y = "Count") +
+  theme_minimal()
+
+```
